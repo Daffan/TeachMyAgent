@@ -9,6 +9,7 @@ from TeachMyAgent.teachers.algos.self_paced_teacher import SelfPacedTeacher
 from TeachMyAgent.teachers.algos.goal_gan import GoalGAN
 from TeachMyAgent.teachers.algos.setter_solver import SetterSolver
 from TeachMyAgent.teachers.algos.random_teacher import RandomTeacher
+from TeachMyAgent.teachers.algos.no_cl import NonCurriculum
 from TeachMyAgent.teachers.utils.dimensions_shuffler import DimensionsShuffler
 from collections import OrderedDict
 
@@ -152,6 +153,8 @@ class TeacherController(object):
             self.task_generator = GoalGAN(mins, maxs, seed=seed, **teacher_params)
         elif teacher == 'Setter-Solver':
             self.task_generator = SetterSolver(mins, maxs, seed=seed, **teacher_params)
+        elif teacher == 'Non-Curriculum':
+            self.task_generator = NonCurriculum(mins, maxs, seed=seed, **teacher_params)
         else:
             print('Unknown teacher')
             raise NotImplementedError

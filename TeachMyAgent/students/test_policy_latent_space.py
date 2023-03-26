@@ -208,6 +208,7 @@ def run_policy(env, get_action, env_params_list, max_ep_len=None, episode_id=0, 
         o = env.reset()
 
     r, d, ep_ret, ep_len, n = 0, False, 0, 0, 0
+    obss = []
     while True:
         if record and video_recorder.enabled:
             video_recorder.capture_frame()
@@ -216,6 +217,7 @@ def run_policy(env, get_action, env_params_list, max_ep_len=None, episode_id=0, 
             time.sleep(1e-3)
 
         a = get_action(o)
+        obss.append(o)
         o, r, d, i = env.step(a)
         if use_baselines:
             ep_ret += i[0]["original_reward"][0]
@@ -229,7 +231,7 @@ def run_policy(env, get_action, env_params_list, max_ep_len=None, episode_id=0, 
                 video_recorder.close()
                 video_recorder.enabled = False
             break
-    return ep_ret
+    return ep_ret, obss
 
 def main(args):
     '''
@@ -275,12 +277,14 @@ def main(args):
         model = get_baselines_model(network=args.network, nbatch_train=nbatch_train, ob_space=env.observation_space,
                                     ac_space=env.action_space, env=env, nsteps=args.sample_size, ent_coef=args.ent_coef,
                                     vf_coef=args.vf_coef, hidden_sizes=ac_kwargs['hidden_sizes'])
-        if args.checkpoint is None:
-            checkpoint = get_baselines_last_checkpoint(args.fpath + "/checkpoints/")
-        else:
-            checkpoint = args.checkpoint
 
+        last_checkpoint = get_baselines_last_checkpoint(args.fpath + "/checkpoints/")
+        if args.checkpoint is None:
+            checkpoint = last_checkpoint
+        else:
+            checkpoint = "%05d" %args.checkpoint
         model.load(args.fpath + "/checkpoints/" + checkpoint)
+        
         # Careful : The recurrent version is not implemented here yet
         get_action = lambda o: model.step(o)[0]
         env.get_raw_env()._SET_RENDERING_VIEWPORT_SIZE(600, 400)
@@ -292,14 +296,33 @@ def main(args):
         episodes = [i for i in range(len(test_set_params))]
     else:
         episodes = [int(id) for id in args.episode_ids.split("/")]
-
     rewards = []
+
+    covars = []
     for episode_id in episodes:
-        r = run_policy(env, get_action, test_set_params, args.len, episode_id, args.record, args.recording_path,
-                       args.norender, use_baselines=student_type == 'baselines')
-        rewards.append(r)
+        ep_obss = []
+        ep_latents = []
+        reward = 0
+        for _ in range(args.num_repeats):
+            r, obss = run_policy(env, get_action, test_set_params, args.len, episode_id, args.record, args.recording_path,
+                        args.norender, use_baselines=student_type == 'baselines')
+            ep_obss.extend(obss)
+            reward += r
+        print("\n")
+        ep_obss = np.concatenate(ep_obss, axis=0)
+
+        model.load(args.fpath + "/checkpoints/" + last_checkpoint)
+        for obs in ep_obss:
+            ep_latents.append(model.act_model.get_latent(obs[None, :]))
+        model.load(args.fpath + "/checkpoints/" + checkpoint)
+
+        ep_latents = np.concatenate(ep_latents, axis=0)
+        covars.append(ep_latents.T @ ep_latents)
+        rewards.append(reward / args.num_repeats)
+
+        test_set_params[episode_id]["reward"] = reward / args.num_repeats
     env.close()
-    return rewards
+    return test_set_params, np.stack(covars)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -317,7 +340,7 @@ def get_parser():
     '''
     parser = argparse.ArgumentParser()
     parser.add_argument('--fpath', type=str)
-    parser.add_argument('--len', '-l', type=int, default=0)
+    parser.add_argument('--len', '-l', type=int, default=2000)
     parser.add_argument('--norender', '-nr', action='store_true')
     parser.add_argument('--itr', '-i', type=int, default=-1)
     parser.add_argument('--deterministic', '-d', action='store_true')
@@ -326,7 +349,8 @@ def get_parser():
     parser.add_argument('--fixed_test_set', '-ts', type=str, default=None)
     parser.add_argument('--load_env', action='store_true')
     parser.add_argument('--use_test_env', action='store_true')
-    parser.add_argument('--checkpoint', '-cpt', type=str, default=None)
+    parser.add_argument('--checkpoint', '-cpt', type=int, default=None)
+    parser.add_argument('--num_repeats', type=int, default=4)
 
     parser.add_argument('--record', type=str2bool, default=False)
     parser.add_argument('--recording_path', type=str, default=None)
@@ -338,5 +362,8 @@ def get_parser():
 if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_args()
-    main(args)
+    test_set_params, covars = main(args)
 
+    np.save(os.path.join(args.fpath, "covars_%05d.npy" %(args.checkpoint)), covars)
+    with open(osp.join(args.fpath, 'eval_result_%05d.json') %(args.checkpoint), "w") as json_file:
+        json.dump(test_set_params, json_file)

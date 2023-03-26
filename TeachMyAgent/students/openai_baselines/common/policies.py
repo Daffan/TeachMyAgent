@@ -53,6 +53,10 @@ class PolicyWithValue(object):
 
         # Calculate the neg log of our probability
         self.neglogp = self.pd.neglogp(self.action)
+
+        # calculate latent
+        self.latent = latent
+
         self.sess = sess or tf.get_default_session()
 
         if estimate_q:
@@ -111,6 +115,9 @@ class PolicyWithValue(object):
         value estimate
         """
         return self._evaluate(self.vf, ob, *args, **kwargs)
+
+    def get_latent(self, ob, *args, **kwargs):
+        return self._evaluate(self.latent, ob, *args, **kwargs)
 
     def save(self, save_path):
         tf_util.save_state(save_path, sess=self.sess)

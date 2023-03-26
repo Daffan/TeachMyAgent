@@ -186,13 +186,16 @@ class TeacherArgsHandler(AbstractArgsHandler):
             if initial_dist is not None and args.allow_expert_knowledge in ["original", "high"]:
                 params['initial_dist'] = initial_dist
 
-        elif args.teacher == "Setter-Solver":
+        if args.teacher == "Setter-Solver":
             if args.allow_expert_knowledge == "no":
                 raise Exception("Unable to run Setter-Solver without any expert knowledge (needs at least a success definition).")
             params["update_frequency"] = args.ss_update_frequency
             params["setter_loss_noise_ub"] = args.setter_loss_noise_ub
             params["setter_hidden_size"] = args.setter_hidden_size
-
+        
+        if args.teacher == "Non-Curriculum":
+            params['target_dist'] = target_dist
+            
         # Initialize teacher
         teacher = TeacherController(args.teacher, args.nb_test_episodes, param_env_bounds, test_set=args.test_set,
                                     seed=args.seed, keep_periodical_task_samples=args.keep_periodical_task_samples,

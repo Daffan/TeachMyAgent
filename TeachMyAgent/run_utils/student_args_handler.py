@@ -47,6 +47,7 @@ class StudentArgsHandler(AbstractArgsHandler):
         parser.add_argument('--max_grad_norm_coef', type=float, default=0.5)
         parser.add_argument('--lambda_factor', type=float, default=0.95)
         parser.add_argument('--value_network', type=str, default='shared') # shared OR copy
+        parser.add_argument('--load_path', type=str, default=None) # shared OR copy
 
     @staticmethod
     def get_object_from_arguments(args, env_f, teacher):
@@ -133,15 +134,28 @@ class StudentArgsHandler(AbstractArgsHandler):
                     print("Warning: not using half_save with PPO will produce a lot of disk usage.")
 
             env, eval_env = create_custom_vec_normalized_envs(env_f)
+            if args.load_path:
+                fpath = osp.dirname(osp.dirname(args.load_path))
+                load_vectorized_env(fpath, env)
 
             return lambda: learn(network=args.network, env=env, eval_env=eval_env, total_timesteps=args.nb_env_steps * 1e6,
                                  nsteps=args.sample_size, nminibatches=int(args.sample_size//args.batch_size), lr=args.lr,
                                  noptepochs=args.epochs_per_update, log_interval=log_interval, gamma=args.gamma, seed=args.seed,
                                  ent_coef=args.ent_coef, vf_coef=args.vf_coef, lam=args.lambda_factor, cliprange=args.clip_range,
                                  max_grad_norm=args.max_grad_norm_coef, save_interval=save_interval, Teacher=teacher,
-                                 max_ep_len=args.max_ep_len, nb_test_episodes=args.nb_test_episodes,
+                                 max_ep_len=args.max_ep_len, nb_test_episodes=args.nb_test_episodes, load_path=args.load_path,
                                  hidden_sizes=ac_kwargs['hidden_sizes'], logger_dir=logger_kwargs['output_dir'],
                                  reset_frequency=args.reset_frequency, value_network=args.value_network)
 
 
+import os.path as osp
+import joblib
+
+def load_vectorized_env(save_path, env):
+    try:
+        filename = osp.join(save_path, 'vars.pkl')
+        state = joblib.load(filename)
+        env.__load_rms__(state["ob_rms"], state["ret_rms"])
+    except Exception as err:
+        print("Unable to load Running Mean Stds : {}".format(err))
 

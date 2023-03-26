@@ -196,6 +196,7 @@ class ParametricContinuousStumpTracks(gym.Env, EzPickle):
                 obstacle_spacing: Spacing between stumps
                 poly_shape: Shape of polygon stumps
         '''
+
         self.roughness = roughness if roughness else 0
         self.obstacle_spacing = max(0.01, obstacle_spacing) if obstacle_spacing is not None else 8.0
         self.stump_height = [stump_height, 0.1] if stump_height is not None else None
